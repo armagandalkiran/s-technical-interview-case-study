@@ -1,48 +1,73 @@
 import axios from "axios";
 import { useState, useEffect, useRef } from "react";
 import Loading from "../Loading";
-import ScrollLoading from "../ScrollLoading";
 
 const Table = () => {
   const [pageData, setPageData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const observer = useRef();
-  const pageChange = useRef(24);
-
-  const lastCharacterElementRef = (node) => {
-    if (isLoading === true) return;
-    if (observer.current) observer.current.disconnect();
-    observer.current = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting ) {
-        pageChange.current = pageChange.current + 24;
-        fetchData();
-      }
-    });
-    if (node) observer.current.observe(node);
-  };
+  let temp = useRef();
 
   const parseDate = (date) => {
-    date = date.slice(0, 10);
-    return date;
+    const year = Number(date.slice(2,4)) + 2000;
+    const month = date.slice(4,6);
+    const day = date.slice(6,8);
+    const time = date.slice(8,10);
+    const newDate = day + "." + month + "." + year + " " +time+":00";
+
+    return newDate;
   };
 
-  const fetchData = async () => {
-    try {
-        setIsLoading(true);
-      await axios
-        .get(`${process.env.REACT_APP_API_CALL}`)
-        .then((res) => res.data.body.intraDayTradeHistoryList)
-        .then((data) => {
-          setPageData(data.slice(0,pageChange.current));
-        });
-    } catch (err) {
-      console.log(err);
-    } finally {
-      setIsLoading(false);
-    }
+  const groupBy = function (xs, key) {
+    return xs.reduce(function (rv, x) {
+      (rv[x[key]] = rv[x[key]] || []).push(x);
+      return rv;
+    }, {});
+  };
+
+  const calculate = (data) => {
+    let tempObj = {
+      tl: 0,
+      mwh: 0,
+      ort: 0,
+      conract: "",
+    };
+
+    let tempArr = [];
+
+    Object.keys(data).forEach((key, index) => {
+      data[key].map((item, idx) => {
+        tempObj = {
+          ...tempObj,
+          tl: tempObj.tl + (item.price * item.quantity) / 10,
+          mwh: tempObj.mwh + (item.quantity / 10),
+          conract: item.conract
+        }
+        tempObj.ort = tempObj.tl / tempObj.mwh;
+        return tempObj;
+      });
+      tempArr.push(tempObj);
+    });
+    setPageData(tempArr);
   };
 
   useEffect(() => {
+    async function fetchData(){
+      try {
+        setIsLoading(true);
+        await axios
+          .get(`${process.env.REACT_APP_API_CALL}`)
+          .then((res) => res.data.body.intraDayTradeHistoryList)
+          .then((data) => {
+            data = data.filter((item) => item.conract.slice(0, 2) !== "PB");
+            temp.current = groupBy(data, "conract");
+            calculate(temp.current);
+          });
+      } catch (err) {
+        console.log(err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
     fetchData();
   }, []);
 
@@ -58,37 +83,22 @@ const Table = () => {
           </tr>
         </thead>
         <tbody>
-          {isLoading && pageChange.current === 24 ? (
+          {isLoading ? (
             <Loading />
           ) : (
             pageData.map((item, idx) => {
-              if (pageData.length === idx + 1) {
-                return (
-                  <tr key={idx} ref={lastCharacterElementRef}>
-                    <td>{item.id}</td>
-                    <td>{parseDate(item.date)}</td>
-                    <td>{item.conract}</td>
-                    <td>{item.price}</td>
-                  </tr>
-                );
-              }else{
-                  return (
-                    <tr key={idx}>
-                    <td>{item.id}</td>
-                    <td>{parseDate(item.date)}</td>
-                    <td>{item.conract}</td>
-                    <td>{item.price}</td>
-                  </tr>
-                  )
-              }
+              return (
+                <tr key={idx}>
+                  <td>{parseDate(item.conract)}</td>
+                  <td>{item.mwh.toFixed(2)}</td>
+                  <td>{item.tl.toFixed(2)}</td>
+                  <td>{item.ort.toFixed(2)}</td>
+                </tr>
+              );
             })
           )}
         </tbody>
       </table>
-      <ScrollLoading/>
-      {/* <div className="table--end">
-          SAYFA SONUNDASINIZ !
-      </div> */}
     </>
   );
 };
