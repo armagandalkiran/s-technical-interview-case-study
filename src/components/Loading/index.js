@@ -1,5 +1,4 @@
 const Loading = () => {
-  console.log("loading");
   return (
       <tr>
         <td>Loading..</td>
